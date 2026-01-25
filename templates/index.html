@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Darkly Proxy | Simplified Web</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --glass: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.1);
+            --accent: #bb86fc;
+            --accent-glow: rgba(187, 134, 252, 0.3);
+            --text: #e0e0e0;
+            --text-dim: #a0a0a0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #background-glow {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            z-index: -1;
+            filter: blur(80px);
+            animation: pulse 10s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from {
+                opacity: 0.5;
+                transform: translate(-50%, -50%) scale(1);
+            }
+
+            to {
+                opacity: 0.8;
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        h1 {
+            font-weight: 600;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #fff, var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            color: var(--text-dim);
+            margin-bottom: 40px;
+        }
+
+        .input-group {
+            position: relative;
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px 20px;
+            color: white;
+            font-size: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            outline: none;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        button {
+            background: var(--accent);
+            color: black;
+            border: none;
+            border-radius: 12px;
+            padding: 0 30px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #result-container {
+            margin-top: 40px;
+            display: none;
+            text-align: left;
+            max-height: 50vh;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        #result-container h2 {
+            font-size: 1.2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            color: var(--accent);
+        }
+
+        iframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .loader {
+            display: none;
+            margin: 20px auto;
+            width: 30px;
+            height: 30px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="background-glow"></div>
+
+    <div class="container">
+        <h1>Through a Browser, Darkly</h1>
+        <p>A simplified, secure perspective of the web.</p>
+
+        <div class="input-group">
+            <input type="text" id="url-input" placeholder="Enter URL (e.g. example.com)" onkeypress="handleKey(event)">
+            <button onclick="browse()">Browse</button>
+        </div>
+
+        <div class="loader" id="loader"></div>
+
+        <div id="result-container">
+            <h2>Simplified View</h2>
+            <iframe id="result-frame"></iframe>
+        </div>
+    </div>
+
+    <script>
+        function handleKey(e) {
+            if (e.key === 'Enter') browse();
+        }
+
+        async function browse() {
+            const urlInput = document.getElementById('url-input');
+            const url = urlInput.value.trim();
+            if (!url) return;
+
+            const loader = document.getElementById('loader');
+            const resultContainer = document.getElementById('result-container');
+            const resultFrame = document.getElementById('result-frame');
+
+            loader.style.display = 'block';
+            resultContainer.style.display = 'none';
+
+            try {
+                // We call our proxy endpoint
+                const proxyUrl = `/proxy?url=${encodeURIComponent(url)}`;
+
+                // Set the src of the iframe to the proxy
+                resultFrame.src = proxyUrl;
+
+                resultFrame.onload = () => {
+                    loader.style.display = 'none';
+                    resultContainer.style.display = 'block';
+                };
+            } catch (err) {
+                alert("Failed to browse: " + err.message);
+                loader.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+
+</html>
