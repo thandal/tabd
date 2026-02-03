@@ -1,4 +1,4 @@
-# Through a browser, darkly
+# Through a browser, Darkly
 A mitmproxy-based proxy that simplifies web pages using AI.
 
 NOTE: We recommend using Groq's openai/gpt-oss-20b model for speed and quality.
