@@ -2,9 +2,9 @@ from mitmproxy import http
 import os
 import time
 from dotenv import load_dotenv
-from google import genai
 from openai import OpenAI
 from bs4 import BeautifulSoup, Comment
+from readability_simplifier import ReadabilitySimplifier
 
 load_dotenv()
 
@@ -39,15 +39,31 @@ def simplify_html_rule_based(html_content):
 
     return soup.prettify()
 
+# Initialize the simplifier
+simplifier = ReadabilitySimplifier()
+
+def simplify_html_readability(html_content, url=None):
+    """Simplify HTML content using ReadabilitySimplifier."""
+    try:
+        result = simplifier.simplify(html_content, url=url)
+        return result['content']
+    except Exception as e:
+        print(f"Readability simplification failed: {e}")
+        return html_content
+
 def simplify_html_ai(html_content):
     if not html_content:
         return "Error: No HTML content provided"
     
     # with open("debug_html_content.html", "w") as f:
     #     f.write(html_content)   
-        
+
     # First, use rule-based simplification to reduce token count
+    print(f"Original HTML content length: {len(html_content)}")
+    # First, use readability simplification to reduce token count
     pre_simplified = simplify_html_rule_based(html_content)
+    # pre_simplified = simplify_html_readability(html_content)
+    # pre_simplified = html_content
     print(f"Pre-simplified HTML content length: {len(pre_simplified)}")
 
     # with open("debug_pre_simplified_html_content.html", "w") as f:
