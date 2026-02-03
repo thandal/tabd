@@ -168,11 +168,11 @@ class DarklyAddon:
                 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
                 <style>
                     :root {{
-                        --primary: #ff3e81;
-                        --bg: #0f172a;
-                        --card: #1e293b;
-                        --text: #f8fafc;
-                        --text-dim: #94a3b8;
+                        --primary: #737373;
+                        --bg: #171717;
+                        --card: #262626;
+                        --text: #f5f5f5;
+                        --text-dim: #a3a3a3;
                     }}
                     body {{
                         font-family: 'Outfit', sans-serif;
@@ -192,7 +192,7 @@ class DarklyAddon:
                         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
                         width: 100%;
                         max-width: 700px;
-                        border: 1px solid rgba(255, 255, 255, 0.1);
+                        border: 1px solid rgba(255, 255, 255, 0.05);
                         backdrop-filter: blur(10px);
                         animation: slideIn 0.6s ease-out;
                     }}
@@ -204,19 +204,17 @@ class DarklyAddon:
                         font-weight: 600;
                         margin-top: 0;
                         font-size: 1.875rem;
-                        background: linear-gradient(to right, var(--primary), #fbbf24);
-                        -webkit-background-clip: text;
-                        -webkit-text-fill-color: transparent;
+                        color: var(--text);
                         margin-bottom: 0.5rem;
                     }}
                     p {{ color: var(--text-dim); margin-bottom: 2rem; }}
                     textarea {{
                         width: 100%;
                         height: 300px;
-                        background: #0f172a;
-                        border: 2px solid #334155;
+                        background: #171717;
+                        border: 2px solid #404040;
                         border-radius: 0.75rem;
-                        color: #e2e8f0;
+                        color: #e5e5e5;
                         font-family: 'JetBrains Mono', monospace;
                         padding: 1rem;
                         font-size: 0.9rem;
@@ -228,10 +226,10 @@ class DarklyAddon:
                     textarea:focus {{
                         outline: none;
                         border-color: var(--primary);
-                        box-shadow: 0 0 0 4px rgba(255, 62, 129, 0.1);
+                        box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
                     }}
                     .btn {{
-                        background: var(--primary);
+                        background: #404040;
                         color: white;
                         border: none;
                         padding: 0.75rem 2rem;
@@ -245,16 +243,17 @@ class DarklyAddon:
                     }}
                     .btn:hover {{
                         transform: translateY(-2px);
-                        box-shadow: 0 10px 15px -3px rgba(255, 62, 129, 0.4);
-                        background: #f43f5e;
+                        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+                        background: #525252;
                     }}
                     .btn:active {{ transform: translateY(0); }}
                     .btn-secondary {{
-                        background: #334155;
+                        background: #262626;
+                        border: 1px solid #404040;
                     }}
                     .btn-secondary:hover {{
-                        background: #475569;
-                        box-shadow: 0 10px 15px -3px rgba(51, 65, 85, 0.4);
+                        background: #333333;
+                        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
                     }}
                 </style>
             </head>
