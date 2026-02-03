@@ -1,7 +1,7 @@
 # Through a Browser, Darkly
 A mitmproxy-based proxy that simplifies web pages using AI.
 
-NOTE: We recommend using Groq's openai/gpt-oss-20b model for speed and quality.
+NOTE: We've found that Cerebras's gpt-oss-120b model is the fastest.
 
 ## Setup
 * Create python virtual environment:
