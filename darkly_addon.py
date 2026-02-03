@@ -87,7 +87,7 @@ def simplify_html_ai(html_content):
     model_provider = os.getenv("AI_PROVIDER")
     if model_provider == "cerebras":
         api_key = os.getenv("CEREBRAS_API_KEY")
-        base_url="https://api.cerebras.ai/v1"
+        base_url = "https://api.cerebras.ai/v1"
         model_name = os.getenv("CEREBRAS_MODEL")
     elif model_provider== "gemini":
         api_key = os.getenv("GEMINI_API_KEY")
@@ -149,7 +149,7 @@ class DarklyAddon:
                     flow.response.set_text(simplified_html)
                     # Update headers to reflect modification
                     flow.response.headers["Content-Length"] = str(len(flow.response.raw_content))
-                    #flow.response.headers["X-Darkly-Simplified"] = "true"
+                    flow.response.headers["x-darkly"] = "true"
                 else:
                     flow.response.set_text(f"Skipping simplification for {flow.request.pretty_url}: {simplified_html}...")
             except Exception as e:
