@@ -4,11 +4,11 @@ A mitmproxy-based proxy that simplifies web pages using AI.
 NOTE: We recommend using Groq's openai/gpt-oss-20b model for speed and quality.
 
 ## Setup
-* Create python virtual environment: `python3 -m venv python_env`
-* Activate python virtual environment: `source python_env/bin/activate`
-* Install dependencies `pip install dotenv beautifulsoup4 mitmproxy google-genai openai`
+* Create python virtual environment: ```python3 -m venv python_env```
+* Activate python virtual environment: ```source python_env/bin/activate```
+* Install dependencies ```pip install dotenv beautifulsoup4 mitmproxy google-genai openai```
 * Create a .env file from .env.example and fill in your API keys
-* Start proxy app: `python3 app.py`
+* Start proxy app: ```python3 app.py```
 
 ### Chrome setup: Create a Darkly profile
 * Create a new Chrome profile
