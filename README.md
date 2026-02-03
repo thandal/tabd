@@ -22,11 +22,6 @@ pip install dotenv mitmproxy openai
 python3 app.py
 ```
 
-## Control Panel
-You can customize the AI's behavior by visiting **http://darkly** in your browser (while the proxy is running).
-* Edit the system instructions to change how pages are simplified.
-* Save instructions (persisted to `ai_instructions.txt` and a cookie).
-* Reset to default settings at any time.
 
 ### Chrome setup: Create a Darkly profile
 * Create a new Chrome profile
@@ -38,10 +33,11 @@ You can customize the AI's behavior by visiting **http://darkly** in your browse
 * Click on the "Get mitmproxy-ca-cert.pem" button
 * Install the certificate for your browser: Settings > Privacy and Security > Security > Manage certificates > Custom > Trusted Certificates > Import
 
-Browse the web -- and feel free to change the prompts in darkly_addon.py!
-For example, try adding
-* "Convert all proper nouns to bold text"
-* "Add a link to the wikipedia page for each proper noun."
+## Browse the web, configure the AI behavior
+You can customize the AI's behavior by visiting **http://dark.ly** in your browser (while the proxy is running).
+* Edit the system instructions to change how pages are processed by the AI.
+* Save instructions to `ai_instructions.txt`.
+* Reset to default settings at any time.
 
 ## Examples
 ![slashdot](examples/slashdot_side_by_side.png)
