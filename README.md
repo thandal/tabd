@@ -1,5 +1,5 @@
 # Through a Browser, Darkly
-A mitmproxy-based proxy that simplifies web pages using AI.
+A mitmproxy-based proxy that flexibly simplifies web pages using AI.
 
 NOTE: We've found that Cerebras's gpt-oss-120b model is the fastest.
 
@@ -36,3 +36,8 @@ Browse the web -- and feel free to change the prompts in darkly_addon.py!
 For example, try adding
 * "Convert all proper nouns to bold text"
 * "Add a link to the wikipedia page for each proper noun."
+
+## Examples
+![slashdot](examples/slashdot_side_by_side.png)
+
+![yahoo](examples/yahoo_side_by_side.png)
