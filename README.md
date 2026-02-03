@@ -1,27 +1,20 @@
-# Through a browser, darkly
+# Through a browser, Darkly
 A mitmproxy-based proxy that simplifies web pages using AI.
 
 NOTE: We recommend using Groq's openai/gpt-oss-20b model for speed and quality.
 
-## Create python virtual environment
-python3 -m venv python_env 
+## Setup
+* Create python virtual environment: `python3 -m venv python_env`
+* Activate python virtual environment: `source python_env/bin/activate`
+* Install dependencies `pip install dotenv beautifulsoup4 mitmproxy google-genai openai`
+* Start proxy app: `python3 app.py`
 
-## Activate python virtual environment
-source python_env/bin/activate
-
-## Install dependencies
-pip install dotenv beautifulsoup4 mitmproxy google-genai openai 
-
-## Start app
-python3 app.py
-
-# Create a Darkly profile
+### Chrome setup: Create a Darkly profile
 * Create a new Chrome profile
 * Install Proxy Switcher Chrome extension: https://chromewebstore.google.com/detail/onnfghpihccifgojkpnnncpagjcdbjod
-* Set to manual proxy, address 127.0.0.1, port 8888, server type http.
-* See ![proxy_switcher_configuration](proxy_switcher_configuration.png)
+* Set to manual proxy, address 127.0.0.1, port 8888, server type http. For example: ![proxy_switcher_configuration](proxy_switcher_configuration.png)
 
-# Add the MITM certificate
+### Add the MITM certificate to Chrome
 * Go to http://mitm.it/ in the Darkly browser profile
 * Click on the "Get mitmproxy-ca-cert.pem" button
 * Install the certificate for your browser: Settings > Privacy and Security > Security > Manage certificates > Custom > Trusted Certificates > Import
