@@ -38,6 +38,10 @@ You can customize the AI's behavior by visiting **http://dark.ly** in your brows
 * Edit the system instructions to change how pages are processed by the AI.
 * Save instructions to `ai_instructions.txt`.
 * Reset to default settings at any time.
+* Example additions:
+  * "Convert all proper nouns to bold text"
+  * "Add a link to the wikipedia page for each proper noun."
+  * "Write everything in pig latin."
 
 ## Examples
 ![slashdot](examples/slashdot_side_by_side.png)
