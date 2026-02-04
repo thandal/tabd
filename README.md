@@ -1,5 +1,5 @@
 # Through a Browser, Darkly
-A mitmproxy-based proxy that flexibly simplifies web pages using AI.
+A mitmproxy-based proxy that flexibly munges web pages using AI.
 
 NOTE: We've found that Cerebras's gpt-oss-120b model is the fastest.
 
@@ -21,7 +21,6 @@ pip install dotenv mitmproxy openai
 ```
 python3 app.py
 ```
-
 
 ### Chrome setup: Create a Darkly profile
 * Create a new Chrome profile
