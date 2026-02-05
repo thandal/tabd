@@ -7,7 +7,11 @@ from bs4 import BeautifulSoup, Comment
 
 load_dotenv()
 
-DEFAULT_INSTRUCTIONS = """* Keep all meaningful text and links (hrefs).
+DEFAULT_INSTRUCTIONS = """
+Below is the HTML content of a webpage. Your task is to rewrite it into a streamlined version.
+    
+Rules:
+* Keep all meaningful text and links (hrefs).
 * Remove all ads, tracking scripts, and other non-content elements.
 * Include a <style> block with a simple, modern design (vibrant colors, clean typography, responsive layout).
 * Add links to wikipedia pages where applicable.
@@ -73,9 +77,6 @@ def simplify_html_ai(html_content, instructions=None):
     print(f"Pre-simplified HTML content length: {len(pre_simplified)}")
 
     prompt = f"""
-    Below is the HTML content of a webpage. Your task is to rewrite it into a streamlined version.
-    
-    Rules:
     {ai_instructions}
     
     Content to transform:
