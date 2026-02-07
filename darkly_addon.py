@@ -4,6 +4,7 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 from bs4 import BeautifulSoup, Comment
+from urllib.parse import urljoin, quote
 
 load_dotenv()
 
@@ -119,6 +120,25 @@ def simplify_html_ai(html_content, instructions=None):
     elif "```" in text:
         text = text.split("```")[1].split("```")[0]
     return text.strip()
+
+def rewrite_links(html_content, base_url, proxy_prefix):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Rewrite <a> tags
+    for a in soup.find_all('a', href=True):
+        original_href = a['href']
+        # Resolve relative links
+        absolute_href = urljoin(base_url, original_href)
+        # Wrap in proxy prefix
+        a['href'] = f"{proxy_prefix}{quote(absolute_href)}"
+        
+    # Rewrite <img> tags
+    for img in soup.find_all('img', src=True):
+        original_src = img['src']
+        absolute_src = urljoin(base_url, original_src)
+        img['src'] = f"{proxy_prefix}{quote(absolute_src)}"
+        
+    return str(soup)
 
 class DarklyAddon:
     def __init__(self):

@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, Response
 import requests
-from darkly_addon import simplify_html_rule_based, simplify_html_ai
+from darkly_addon import simplify_html_ai, rewrite_links
 
 load_dotenv()
 
@@ -29,15 +29,26 @@ def proxy():
         }
         response = requests.get(url, headers=headers, timeout=20)
         response.raise_for_status()
-        html_content = response.text
         
+        content_type = response.headers.get('Content-Type', '')
+        
+        # If not HTML, return as is (binary content)
+        if 'text/html' not in content_type:
+            return Response(response.content, mimetype=content_type)
+            
+        html_content = response.text
+
         # Use AI to simplify the HTML (uses AI_PROVIDER from .env)
         simplified = simplify_html_ai(html_content)
         
         if simplified.startswith("Error:"):
             return simplified, 500
             
-        return Response(simplified, mimetype='text/html')
+        # Rewrite links to stay in proxy
+        proxy_prefix = "/proxy?url="
+        rewritten = rewrite_links(simplified, url, proxy_prefix)
+        
+        return Response(rewritten, mimetype='text/html')
             
     except requests.RequestException as e:
         return f"Error fetching page: {str(e)}", 500
