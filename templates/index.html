@@ -26,8 +26,8 @@
             font-family: 'Outfit', sans-serif;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            align-items: left-top;
+            justify-content: left-top;
             min-height: 100vh;
             overflow: hidden;
         }
@@ -59,7 +59,7 @@
 
         .container {
             width: 90%;
-            max-width: 800px;
+            max-width: 600px;
             background: var(--glass);
             backdrop-filter: blur(20px);
             border: 1px solid var(--border);
@@ -67,6 +67,7 @@
             padding: 40px;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
             text-align: center;
+            position: relative;
         }
 
         h1 {
@@ -185,23 +186,48 @@
             transition: transform 0.3s;
         }
 
-        .settings-panel {
-            display: none;
-            margin-top: 15px;
-            text-align: left;
-            animation: fadeIn 0.3s ease-out;
-        }
-
         @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(-10px);
+                transform: translateX(-10px);
             }
 
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateX(0);
             }
+        }
+
+        .settings-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-dim);
+            transition: color 0.3s, transform 0.3s;
+            padding: 0 5px;
+        }
+
+        .settings-icon:hover {
+            color: var(--accent);
+            transform: rotate(30deg);
+        }
+
+        .settings-panel {
+            position: absolute;
+            left: calc(100% + 20px);
+            top: 0;
+            width: 50vw;
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 25px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            display: none;
+            text-align: left;
+            z-index: 100;
+            animation: fadeIn 0.3s ease-out;
         }
 
         textarea {
@@ -237,21 +263,23 @@
         <h1>Through a Browser, Darkly</h1>
         <div class="input-group">
             <input type="text" id="url-input" placeholder="Enter URL (e.g. example.com)" onkeypress="handleKey(event)">
-            <button onclick="browse()">Browse</button>
-        </div>
-
-        <div class="settings-toggle" onclick="toggleSettings()">
-            <span>AI Instructions</span>
-            <svg id="settings-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m6 9 6 6 6-6" />
-            </svg>
+            <button onclick="browse()">Load</button>
+            <div class="settings-icon" onclick="toggleSettings()" title="AI Instructions">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+            </div>
         </div>
 
         <div id="settings-panel" class="settings-panel">
-            <textarea id="instructions-textarea" placeholder="Enter AI instructions..."></textarea>
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button onclick="saveInstructions()" id="save-btn" style="flex: 1; height: 40px;">Save</button>
+            <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent);">AI Instructions</h3>
+            <textarea id="instructions-textarea" placeholder="Enter AI instructions..."
+                style="height: 300px;"></textarea>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button onclick="saveInstructions()" id="save-btn" style="flex: 1; height: 40px;">Save & Load</button>
                 <button onclick="resetInstructions()" class="btn-secondary"
                     style="flex: 1; height: 40px;">Reset</button>
             </div>
@@ -314,11 +342,9 @@
 
         function toggleSettings() {
             const panel = document.getElementById('settings-panel');
-            const chevron = document.getElementById('settings-chevron');
             const isVisible = panel.style.display === 'block';
 
             panel.style.display = isVisible ? 'none' : 'block';
-            chevron.style.transform = isVisible ? 'rotate(180deg)' : 'rotate(0deg)';
 
             if (!isVisible && !document.getElementById('instructions-textarea').value) {
                 loadInstructions();
@@ -354,6 +380,7 @@
                 saveBtn.innerText = originalText;
                 saveBtn.disabled = false;
             }
+            browse();
         }
 
         function resetInstructions() {
