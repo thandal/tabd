@@ -14,7 +14,7 @@ source python_env/bin/activate
 ```
 * Install dependencies
 ```
-pip install dotenv mitmproxy openai
+pip install dotenv mitmproxy openai beautifulsoup4
 ```
 * Create a .env file from .env.example and fill in your API keys as desired
 * Start proxy app:
