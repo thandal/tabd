@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, Response
+from flask import Flask, render_template, request, Response, jsonify
 import requests
 from darkly_addon import simplify_html_ai, rewrite_links
 
@@ -54,6 +54,26 @@ def proxy():
         return f"Error fetching page: {str(e)}", 500
     except Exception as e:
         return f"Error processing page: {str(e)}", 500
+
+@app.route('/api/instructions', methods=['GET', 'POST'])
+def handle_instructions():
+    import darkly_addon
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            new_instructions = data.get('instructions')
+            if new_instructions:
+                darkly_addon.save_instructions(new_instructions)
+                darkly_addon.current_instructions = new_instructions
+                return jsonify({"status": "success"})
+            return jsonify({"status": "error", "message": "No instructions provided"}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+            
+    return jsonify({
+        "instructions": darkly_addon.load_instructions(),
+        "default": darkly_addon.DEFAULT_INSTRUCTIONS
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

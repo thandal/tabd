@@ -130,31 +130,22 @@
         }
 
         #result-container {
-            margin-top: 40px;
+            margin-top: 10px;
+            width: 100%;
+            height: 90vh;
             display: none;
             text-align: left;
-            max-height: 50vh;
-            overflow-y: auto;
             background: rgba(0, 0, 0, 0.4);
             border-radius: 16px;
             padding: 20px;
             border: 1px solid var(--border);
         }
 
-        #result-container h2 {
-            font-size: 1.2rem;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 10px;
-            margin-bottom: 10px;
-            color: var(--accent);
-        }
-
         iframe {
             width: 100%;
-            height: 400px;
+            height: 100%;
             border: none;
             background: white;
-            border-radius: 8px;
         }
 
         .loader {
@@ -173,6 +164,69 @@
                 transform: rotate(360deg);
             }
         }
+
+        .settings-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 20px;
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        .settings-toggle:hover {
+            color: var(--accent);
+        }
+
+        #settings-chevron {
+            transition: transform 0.3s;
+        }
+
+        .settings-panel {
+            display: none;
+            margin-top: 15px;
+            text-align: left;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px;
+            color: white;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            resize: vertical;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
     </style>
 </head>
 
@@ -186,12 +240,29 @@
             <button onclick="browse()">Browse</button>
         </div>
 
-        <div class="loader" id="loader"></div>
-
-        <div id="result-container">
-            <h2>Simplified View</h2>
-            <iframe id="result-frame"></iframe>
+        <div class="settings-toggle" onclick="toggleSettings()">
+            <span>AI Instructions</span>
+            <svg id="settings-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6" />
+            </svg>
         </div>
+
+        <div id="settings-panel" class="settings-panel">
+            <textarea id="instructions-textarea" placeholder="Enter AI instructions..."></textarea>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button onclick="saveInstructions()" id="save-btn" style="flex: 1; height: 40px;">Save</button>
+                <button onclick="resetInstructions()" class="btn-secondary"
+                    style="flex: 1; height: 40px;">Reset</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="loader" id="loader"></div>
+
+    <div id="result-container">
+        <iframe id="result-frame"></iframe>
     </div>
 
     <script>
@@ -227,6 +298,73 @@
                 loader.style.display = 'none';
             }
         }
+
+        let defaultInstructions = "";
+
+        async function loadInstructions() {
+            try {
+                const resp = await fetch('/api/instructions');
+                const data = await resp.json();
+                document.getElementById('instructions-textarea').value = data.instructions;
+                defaultInstructions = data.default;
+            } catch (err) {
+                console.error("Failed to load instructions:", err);
+            }
+        }
+
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            const chevron = document.getElementById('settings-chevron');
+            const isVisible = panel.style.display === 'block';
+
+            panel.style.display = isVisible ? 'none' : 'block';
+            chevron.style.transform = isVisible ? 'rotate(180deg)' : 'rotate(0deg)';
+
+            if (!isVisible && !document.getElementById('instructions-textarea').value) {
+                loadInstructions();
+            }
+        }
+
+        async function saveInstructions() {
+            const instructions = document.getElementById('instructions-textarea').value;
+            const saveBtn = document.getElementById('save-btn');
+            const originalText = "Save";
+
+            saveBtn.innerText = "Saving...";
+            saveBtn.disabled = true;
+
+            try {
+                const resp = await fetch('/api/instructions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ instructions })
+                });
+
+                if (resp.ok) {
+                    saveBtn.innerText = "Saved!";
+                    setTimeout(() => {
+                        saveBtn.innerText = originalText;
+                        saveBtn.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error("Failed to save");
+                }
+            } catch (err) {
+                alert("Error saving: " + err.message);
+                saveBtn.innerText = originalText;
+                saveBtn.disabled = false;
+            }
+        }
+
+        function resetInstructions() {
+            if (confirm("Reset to default instructions?")) {
+                document.getElementById('instructions-textarea').value = defaultInstructions;
+                saveInstructions();
+            }
+        }
+
+        // Load on init
+        loadInstructions();
     </script>
 </body>
 
