@@ -1,6 +1,8 @@
 # Through a Browser, Darkly
 A proxy that flexibly munges web pages using AI.
 
+Example proxying server: http://shen.timbrel.org:5000/
+
 NOTE: We've found that Cerebras's gpt-oss-120b model is the fastest.
 
 ## Setup
