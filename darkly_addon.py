@@ -36,7 +36,25 @@ def save_instructions(instructions):
 current_instructions = load_instructions()
 
 def clean_text(text):
-    return re.sub(r'\s+', ' ', text).strip()
+    """Collapse horizontal whitespace, but keep newlines.
+
+    Newlines are the block-boundary markers that process_node emits. Collapsing
+    them here (as \\s+ would) makes every ancestor block re-flatten its
+    descendants, so a whole <article> arrives at the LLM as one line with every
+    heading, paragraph and list boundary erased.
+    """
+    text = re.sub(r'[^\S\n]+', ' ', text)
+    text = re.sub(r' *\n[ \n]*', '\n', text)
+    return text.strip()
+
+
+def clean_inline(text):
+    """Flatten a run of source text to a single line.
+
+    Applied to raw text nodes so that newlines from the HTML source (line
+    wrapping, indentation) can never be mistaken for block boundaries.
+    """
+    return re.sub(r'\s+', ' ', text)
 
 def dom_to_condensed(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -57,7 +75,8 @@ def dom_to_condensed(html_content):
                 id_val = next_id; next_id += 1
                 mapping[id_val] = {'type': 'a', 'href': href}
                 text = "".join(process_node(c) for c in node.children)
-                text = clean_text(text)
+                # Link text must stay on one line or the [text][id] reference breaks.
+                text = clean_inline(text).strip()
                 if text: return f"[{text}][{id_val}]"
             return ""
         elif node.name == 'img':
@@ -68,7 +87,7 @@ def dom_to_condensed(html_content):
                 return f"![{node.get('alt', '').strip()}][{id_val}]"
             return ""
         elif type(node) == bs4.element.NavigableString:
-            return str(node)
+            return clean_inline(str(node))
         elif node.name is not None:
             is_block = node.name in block_tags
             hint = ""
@@ -91,7 +110,9 @@ def dom_to_condensed(html_content):
 
     body = soup.find('body') or soup
     raw_condensed = process_node(body)
-    condensed = re.sub(r'\n+', '\n', raw_condensed).strip()
+    # One block per line; drop blank and whitespace-only lines.
+    lines = (line.strip() for line in raw_condensed.split('\n'))
+    condensed = '\n'.join(line for line in lines if line)
     return condensed, mapping
 
 def _get_llm_client():
@@ -131,48 +152,146 @@ async def _call_llm_stream(client, model_name, prompt):
     duration = time.time() - start_time
     print(f"--- AI Generation ({model_name}) took {duration:.2f}s ---")
 
+LIST_ITEM_RE = re.compile(r'^ {0,3}([-*+]|\d{1,9}[.)])\s')
+TABLE_ROW_RE = re.compile(r'^ {0,3}\|')
+BLOCKQUOTE_RE = re.compile(r'^ {0,3}>')
+FENCE_RE = re.compile(r'^ {0,3}(```|~~~)')
+TRAILING_FENCE_RE = re.compile(r'\n? {0,3}(```|~~~)\s*$')
+
+
 class MarkdownStreamParser:
+    """Convert streamed Markdown to HTML without cutting constructs in half.
+
+    A blank line is not a reliable block boundary: loose lists, tables and
+    blockquotes span them, and fenced code can contain them. Splitting on
+    "\\n\\n" turns one loose list into N single-item <ul>s. So a blank line is
+    only treated as a boundary once the following line proves the construct has
+    actually ended -- which means holding the tail back until that line arrives.
+    """
+
     def __init__(self, mapping, base_url="", proxy_prefix=""):
         self.mapping = mapping
         self.base_url = base_url
         self.proxy_prefix = proxy_prefix
         self.buffer = ""
-        self.md = markdown.Markdown()
+        self.md = markdown.Markdown(extensions=["tables", "fenced_code"])
+        self._leading_fence_handled = False
 
     def process_chunk(self, chunk_text):
         self.buffer += chunk_text
-        
-        # Strip leading markdown fences if they arrive in the first few chunks
-        if self.buffer.startswith("```"):
-            self.buffer = re.sub(r'^```[a-zA-Z]*\s*\n?', '', self.buffer)
-            
-        blocks = self.buffer.split("\n\n")
-        
-        if not self.buffer.endswith("\n\n"):
-            self.buffer = blocks.pop()
-        else:
-            self.buffer = ""
-            
-        html_chunks = []
-        for block in blocks:
-            # Strip trailing fences if they appear
-            block = re.sub(r'\n?```\s*$', '', block)
-            if not block.strip():
-                continue
-            html = self.md.convert(block.strip())
-            html = self.restore_ids(html)
-            html_chunks.append(html + "\n")
-        
-        return "".join(html_chunks)
+        self._strip_leading_fence()
+        return self._drain(final=False)
 
     def finish(self):
-        # Strip trailing fences
-        self.buffer = re.sub(r'\n?```\s*$', '', self.buffer)
-        if self.buffer.strip():
-            html = self.md.convert(self.buffer.strip())
-            html = self.restore_ids(html)
-            return html + "\n"
-        return ""
+        self._strip_leading_fence(force=True)
+        self.buffer = TRAILING_FENCE_RE.sub('', self.buffer)
+        return self._drain(final=True)
+
+    def _strip_leading_fence(self, force=False):
+        """Drop a fence the model wrapped the whole document in, despite being asked not to."""
+        if self._leading_fence_handled:
+            return
+        stripped = self.buffer.lstrip()
+        if not stripped:
+            return
+        if not FENCE_RE.match(stripped):
+            self._leading_fence_handled = True
+            return
+        # Wait for the full opening line: stripping "```mark" mid-arrival would
+        # leave the rest of "markdown" as body text.
+        if "\n" not in stripped and not force:
+            return
+        self.buffer = re.sub(r'^\s*(```|~~~)[^\n]*\n?', '', self.buffer)
+        self._leading_fence_handled = True
+
+    def _drain(self, final):
+        out = []
+        while True:
+            block = self._take_block(final)
+            if block is None:
+                break
+            html = self._render(block)
+            if html:
+                out.append(html)
+        return "".join(out)
+
+    def _take_block(self, final):
+        """Pop one renderable block off the buffer, or None if we must wait."""
+        if not self.buffer.strip():
+            if final:
+                self.buffer = ""
+            return None
+
+        lines = self.buffer.split("\n")
+        # The last element has no terminating newline yet, so it may be a partial
+        # line. Never make boundary decisions based on it.
+        complete = lines if final else lines[:-1]
+        tail = [] if final else lines[-1:]
+
+        in_fence = False
+        i = 0
+        n = len(complete)
+        while i < n:
+            line = complete[i]
+            if FENCE_RE.match(line):
+                in_fence = not in_fence
+                i += 1
+                continue
+            if in_fence or line.strip():
+                i += 1
+                continue
+
+            # Blank line outside a fence: a boundary, if nothing continues across it.
+            j = i
+            while j < n and not complete[j].strip():
+                j += 1
+            if j == n:
+                if final:
+                    block = "\n".join(complete[:i])
+                    self.buffer = ""
+                    return block
+                return None  # cannot yet tell whether the construct continues
+            if self._continues(complete[:i], complete[j]):
+                i = j
+                continue
+
+            block = "\n".join(complete[:i])
+            self.buffer = "\n".join(complete[j:] + tail)
+            return block
+
+        if final:
+            block = "\n".join(complete)
+            self.buffer = ""
+            return block
+        return None
+
+    @staticmethod
+    def _continues(previous_lines, next_line):
+        """Does next_line continue the construct that previous_lines ended with?"""
+        for last in reversed(previous_lines):
+            if not last.strip():
+                continue
+            if TABLE_ROW_RE.match(last) and TABLE_ROW_RE.match(next_line):
+                return True
+            if LIST_ITEM_RE.match(last) or last.startswith(("  ", "\t")):
+                return bool(LIST_ITEM_RE.match(next_line)
+                            or next_line.startswith(("  ", "\t")))
+            if BLOCKQUOTE_RE.match(last) and BLOCKQUOTE_RE.match(next_line):
+                return True
+            return False
+        return False
+
+    def _render(self, block):
+        block = block.strip("\n")
+        if not block.strip():
+            return ""
+        # convert() does not reset the instance: without this the html stash and
+        # reference definitions accumulate for the whole page.
+        self.md.reset()
+        html = self.md.convert(block)
+        if not html:
+            return ""
+        return self.restore_ids(html) + "\n"
 
     def restore_ids(self, html):
         def replace_a(match):
@@ -324,16 +443,21 @@ async def simplify_html_stream(html_content, base_url="", proxy_prefix=""):
 <div class="darkly-content">
 """
 
-    async for md_chunk in _call_llm_stream(client, model_name, prompt):
-        html_chunk = parser.process_chunk(md_chunk)
-        if html_chunk:
-            yield html_chunk
-            
-    final_chunk = parser.finish()
-    if final_chunk:
-        yield final_chunk
-        
-    yield "\n</div></body></html>"
+    try:
+        async for md_chunk in _call_llm_stream(client, model_name, prompt):
+            html_chunk = parser.process_chunk(md_chunk)
+            if html_chunk:
+                yield html_chunk
+
+        final_chunk = parser.finish()
+        if final_chunk:
+            yield final_chunk
+
+        yield "\n</div></body></html>"
+    finally:
+        # Each call builds its own client (and httpx connection pool). Without
+        # this the pool is still open when the caller's event loop closes.
+        await client.close()
 
 class DarklyAddon:
     def __init__(self):

@@ -1,0 +1,10 @@
+# Through a Browser, Darkly -- direct dependencies.
+# Install with: python_env/bin/pip install -r requirements.txt
+
+beautifulsoup4>=4.14      # dom_to_condensed
+Flask>=3.1                # darkly_server.py
+Markdown>=3.10            # MarkdownStreamParser (needs the tables/fenced_code extensions)
+mitmproxy>=12.2           # darkly_proxy.py / darkly_addon.py
+openai>=2.16              # AsyncOpenAI client, used for every provider
+python-dotenv>=1.2        # load_dotenv; NOT the unrelated "dotenv" package on PyPI
+requests>=2.32            # darkly_server.py, darkly_compare.py

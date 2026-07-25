@@ -16,7 +16,7 @@ source python_env/bin/activate
 ```
 * Install dependencies
 ```
-pip install dotenv mitmproxy openai beautifulsoup4
+pip install -r requirements.txt
 ```
 * Create a .env file from .env.example and fill in your API keys as desired
 
@@ -26,10 +26,23 @@ pip install dotenv mitmproxy openai beautifulsoup4
 ```
 python3 darkly_proxy.py
 ```
-* Start proxying server:
+* Start proxying server (defaults to http://0.0.0.0:5337):
 ```
 python3 darkly_server.py
 ```
+
+The server reads three optional environment variables:
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `DARKLY_HOST` | `0.0.0.0` | Set to `127.0.0.1` to keep it off the network. |
+| `DARKLY_PORT` | `5337` | |
+| `DARKLY_DEBUG` | off | Never enable on a public bind: the Werkzeug debugger exposes an interactive console and your API keys on any traceback. |
+
+⚠️ `/proxy` is unauthenticated: anyone who can reach the server can make it fetch
+URLs on their behalf. It refuses non-`http(s)` schemes and rejects private,
+loopback and link-local addresses (re-checked on every redirect hop), but if you
+expose it publicly, expect it to be used as a general-purpose fetcher.
 
 ### For the mitmproxy: Chrome setup: Create a Darkly profile
 * Create a new Chrome profile
