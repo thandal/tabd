@@ -3,7 +3,12 @@
 Run with:  python_env/bin/python test_darkly.py
 (also works under pytest if you have it)
 """
+from unittest.mock import patch
+
+from bs4 import BeautifulSoup
+
 from darkly_addon import MarkdownStreamParser, dom_to_condensed
+from darkly_server import BlockedURL, _check_url_allowed, app
 
 MAPPING = {1: {"type": "a", "href": "/a"},
            2: {"type": "img", "src": "/i.png", "alt": "pic"}}
@@ -79,8 +84,24 @@ def test_document_wrapping_fence_is_stripped():
 
 def test_ids_are_restored():
     out = render("Text [x][1] and ![pic][2].\n")
-    assert '<a href="https://ex.com/a">x</a>' in out, out
+    assert 'href="https://ex.com/a"' in out and ">x</a>" in out, out
     assert '<img src="https://ex.com/i.png"' in out, out
+
+
+def test_image_syntax_on_link_id_becomes_link():
+    # A thumbnail inside an anchor tempts the model into ![alt][id] with the
+    # anchor's id. Rendering that as <img src="<article page>"> makes the
+    # browser fetch one HTML page per thumbnail (the /proxy subresource guard
+    # then 415s each one). It must render as a link, or nothing without alt.
+    mapping = {1: {'type': 'a', 'href': 'https://ex.com/article'}}
+    parser = MarkdownStreamParser(mapping, "https://ex.com", "/proxy?url=")
+    out = parser.process_chunk("![Story][1]\n") + parser.finish()
+    assert "<img" not in out, out
+    assert 'href="/proxy?url=https%3A%2F%2Fex.com%2Farticle"' in out, out
+    assert ">Story</a>" in out, out
+    parser = MarkdownStreamParser(mapping, "https://ex.com", "/proxy?url=")
+    out = parser.process_chunk("![][1]\n") + parser.finish()
+    assert "<img" not in out and "<a" not in out, out
 
 
 def test_unknown_id_is_left_alone():
@@ -95,6 +116,88 @@ def test_output_is_independent_of_chunk_boundaries():
     reference = render(doc)
     for size in (1, 2, 3, 5, 7, 13, 64, 512):
         assert render(doc, size) == reference, f"differs at chunk size {size}"
+
+
+def test_executable_html_is_removed():
+    out = render('<script>alert(1)</script><img src="x" onerror="alert(2)">\n')
+    assert "script" not in out.lower(), out
+    assert "onerror" not in out.lower(), out
+
+
+def test_unsafe_urls_are_removed():
+    out = render("[click](javascript:alert(1))\n")
+    assert "javascript:" not in out.lower(), out
+
+
+def test_mapped_attributes_cannot_break_out():
+    mapping = {1: {"type": "a", "href": '/x" onmouseover="alert(1)'}}
+    parser = MarkdownStreamParser(mapping, "https://ex.com", "")
+    out = parser.process_chunk("[click][1]\n") + parser.finish()
+    link = BeautifulSoup(out, "html.parser").find("a")
+    assert "onmouseover" not in link.attrs, out
+
+
+def test_cgnat_is_blocked():
+    try:
+        _check_url_allowed("http://100.100.100.200/")
+    except BlockedURL:
+        return
+    raise AssertionError("CGNAT address was allowed")
+
+
+def test_prefetch_never_reaches_the_origin():
+    with patch("darkly_server.fetch_page",
+               side_effect=AssertionError("fetched during a prefetch")):
+        with app.test_client() as client:
+            r = client.get("/proxy?url=https://ex.com",
+                           headers={"Sec-Purpose": "prefetch"})
+    assert r.status_code == 503, r.status_code
+
+
+def test_html_subresource_request_is_not_simplified():
+    class Page:
+        headers = {"Content-Type": "text/html"}
+        content = b"<p>x</p>"
+        text = "<p>x</p>"
+
+    async def fake_simplify(*_args):
+        yield "<p>simplified</p>"
+
+    with patch("darkly_server.fetch_page", return_value=(Page(), "https://ex.com")):
+        with patch("darkly_server.simplify_html_stream", fake_simplify):
+            with app.test_client() as client:
+                image = client.get("/proxy?url=https://ex.com",
+                                   headers={"Sec-Fetch-Dest": "image"})
+                navigation = client.get("/proxy?url=https://ex.com",
+                                        headers={"Sec-Fetch-Dest": "iframe"})
+    assert image.status_code == 415, image.status_code
+    assert navigation.status_code == 200, navigation.status_code
+    assert navigation.get_data(as_text=True) == "<p>simplified</p>"
+
+
+def test_model_added_links_stay_direct():
+    # Links the model injects (e.g. fact-check searches) are not proxied —
+    # search engines bot-block the server-side fetch — and open in a new tab
+    # since the result iframe cannot navigate to sites that refuse framing.
+    doc = "[check](https://www.google.com/search?q=x)\n"
+    parser = MarkdownStreamParser({}, "https://ex.com", "/proxy?url=")
+    out = parser.process_chunk(doc) + parser.finish()
+    assert 'href="https://www.google.com/search?q=x"' in out, out
+    assert 'target="_blank"' in out, out
+    # Without a proxy prefix (the mitmproxy path) they stay direct, same tab.
+    parser = MarkdownStreamParser({}, "https://ex.com", "")
+    out = parser.process_chunk(doc) + parser.finish()
+    assert 'href="https://www.google.com/search?q=x"' in out, out
+    assert 'target=' not in out, out
+
+
+def test_preexisting_links_are_still_proxied():
+    mapping = {1: {'type': 'a', 'href': 'https://ex.com/page'}}
+    doc = "[go][1]\n"
+    parser = MarkdownStreamParser(mapping, "https://ex.com", "/proxy?url=")
+    out = parser.process_chunk(doc) + parser.finish()
+    assert 'href="/proxy?url=https%3A%2F%2Fex.com%2Fpage"' in out, out
+    assert 'target=' not in out, out
 
 
 if __name__ == "__main__":

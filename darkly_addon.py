@@ -1,12 +1,13 @@
 from mitmproxy import http
-import asyncio
+import html as html_lib
 import os
 import time
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from bs4 import BeautifulSoup, Comment
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin, quote, urlsplit
 import markdown
+import nh3
 import re
 import bs4
 
@@ -17,9 +18,17 @@ Below is a text representation of a web page. Your task is to rewrite it into a 
     
 Rules:
 * Keep all meaningful text and main content.
-* Remove all ads, tracking scripts, navigation (nav), sidebars, footers, and other non-content elements. Use the hints in the text to identify bloat.
-* Do not invent new links. If a link or image was provided like [text][X] or ![alt][Y], preserve the [X] exactly.
-* Return ONLY pure Markdown (no markdown fences, no explanation)."""
+* Remove all ads, tracking scripts, navigation (nav), sidebars, footers, and other non-content elements. Use the hints in the text to identify bloat."""
+
+# The id contract and output format are pipeline mechanics, not user preference:
+# dom_to_condensed labels the page's links/images with ids and restore_ids swaps
+# them back after rendering. Appended to every prompt, after the user's
+# instructions, so those can freely add content without breaking the mapping.
+PROTOCOL_INSTRUCTIONS = """
+Output requirements (rendering-pipeline mechanics; these apply on top of the instructions above):
+* Return ONLY pure Markdown (no markdown fences, no explanation).
+* The page text marks its links as [text][X] and images as ![alt][Y]. Keep each id exactly as given. Ids refer only to elements of the original page: never attach an id to new content, and never write a bare [X] on its own.
+* If the instructions above call for adding a link or image the original page does not have, that is allowed: write it inline with a full URL, like [text](https://...) or ![alt](https://...)."""
 
 INSTRUCTIONS_FILE = "ai_instructions.txt"
 
@@ -55,6 +64,34 @@ def clean_inline(text):
     wrapping, indentation) can never be mistaken for block boundaries.
     """
     return re.sub(r'\s+', ' ', text)
+
+
+def safe_url(value, base_url="", proxy_prefix=""):
+    value = urljoin(base_url, value) if base_url else value
+    parts = urlsplit(value)
+    if parts.scheme and parts.scheme.lower() not in ("http", "https"):
+        return None
+    if parts.scheme and not parts.hostname:
+        return None
+    if proxy_prefix:
+        value = proxy_prefix + quote(value, safe="")
+    return html_lib.escape(value, quote=True)
+
+
+# nh3's defaults plus target, so model-added links can open outside the
+# result iframe (their targets, e.g. search engines, refuse framing).
+_ALLOWED_ATTRIBUTES = {k: set(v) for k, v in nh3.ALLOWED_ATTRIBUTES.items()}
+_ALLOWED_ATTRIBUTES.setdefault("a", set()).add("target")
+
+
+def sanitize_html(value):
+    return nh3.clean(
+        value,
+        clean_content_tags={"script", "style"},
+        url_schemes={"http", "https"},
+        attributes=_ALLOWED_ATTRIBUTES,
+    )
+
 
 def dom_to_condensed(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -291,90 +328,87 @@ class MarkdownStreamParser:
         html = self.md.convert(block)
         if not html:
             return ""
-        return self.restore_ids(html) + "\n"
+        return sanitize_html(self.restore_ids(html)) + "\n"
 
-    def restore_ids(self, html):
+    def restore_ids(self, value):
+        def mapped_url(id_val, key, fallback):
+            data = self.mapping.get(id_val)
+            if not data:
+                return None
+            original = data.get(key) or data.get(fallback)
+            return safe_url(original, self.base_url, self.proxy_prefix) if original else None
+
         def replace_a(match):
             text = match.group(1)
             id_val = int(match.group(2))
-            if id_val in self.mapping:
-                map_data = self.mapping[id_val]
-                original_href = map_data.get("href") or map_data.get("src", "#")
-                if self.base_url:
-                    absolute_href = urljoin(self.base_url, original_href)
-                    final_href = f"{self.proxy_prefix}{quote(absolute_href)}" if self.proxy_prefix else absolute_href
-                else:
-                    final_href = original_href
-                return f'<a href="{final_href}">{text}</a>'
-            return match.group(0)
+            if id_val not in self.mapping:
+                return match.group(0)
+            href = mapped_url(id_val, "href", "src")
+            return f'<a href="{href}">{text}</a>' if href else text
 
         def replace_img(match):
-            alt = match.group(1)
+            alt = html_lib.escape(match.group(1), quote=True)
             id_val = int(match.group(2))
-            if id_val in self.mapping:
-                map_data = self.mapping[id_val]
-                original_src = map_data.get("src") or map_data.get("href", "#")
-                if self.base_url:
-                    absolute_src = urljoin(self.base_url, original_src)
-                    final_src = f"{self.proxy_prefix}{quote(absolute_src)}" if self.proxy_prefix else absolute_src
-                else:
-                    final_src = original_src
-                return f'<img src="{final_src}" alt="{alt}" />'
-            return match.group(0)
+            if id_val not in self.mapping:
+                return match.group(0)
+            if self.mapping[id_val].get('type') == 'a':
+                # Image syntax on a link id (a thumbnail inside its anchor):
+                # an <img> pointing at the href would make the browser fetch
+                # an HTML page per thumbnail. Render a link instead.
+                href = mapped_url(id_val, "href", "src")
+                text = match.group(1).strip()
+                return f'<a href="{href}">{text}</a>' if href and text else text
+            src = mapped_url(id_val, "src", "href")
+            return f'<img src="{src}" alt="{alt}">' if src else alt
 
         def replace_a_html(match):
-            href = match.group(1)
-            text = match.group(2)
-            if href.startswith('id:'):
+            href = html_lib.unescape(match.group(1))
+            if href.startswith("id:"):
                 try:
-                    id_val = int(href[3:])
-                    if id_val in self.mapping:
-                        map_data = self.mapping[id_val]
-                        original_href = map_data.get("href") or map_data.get("src", "#")
-                        if self.base_url:
-                            absolute_href = urljoin(self.base_url, original_href)
-                            final_href = f"{self.proxy_prefix}{quote(absolute_href)}" if self.proxy_prefix else absolute_href
-                        else:
-                            final_href = original_href
-                        return f'<a href="{final_href}">{text}</a>'
+                    mapped = mapped_url(int(href[3:]), "href", "src")
                 except ValueError:
-                    pass
+                    return match.group(0)
+                return f'<a href="{mapped}">{match.group(2)}</a>' if mapped else match.group(2)
+            if self.proxy_prefix and href.startswith(("http://", "https://")):
+                # Links the model added itself (e.g. fact-check searches) are NOT
+                # proxied: search engines bot-block the server-side fetch. They
+                # open in a new tab because the result iframe cannot navigate to
+                # sites that refuse framing.
+                return f'<a href="{match.group(1)}" target="_blank">{match.group(2)}</a>'
             return match.group(0)
 
         def replace_img_html(match):
-            alt = match.group(1)
-            src = match.group(2)
-            if src.startswith('id:'):
-                try:
-                    id_val = int(src[3:])
-                    if id_val in self.mapping:
-                        map_data = self.mapping[id_val]
-                        original_src = map_data.get("src") or map_data.get("href", "#")
-                        if self.base_url:
-                            absolute_src = urljoin(self.base_url, original_src)
-                            final_src = f"{self.proxy_prefix}{quote(absolute_src)}" if self.proxy_prefix else absolute_src
-                        else:
-                            final_src = original_src
-                        return f'<img src="{final_src}" alt="{alt}" />'
-                except ValueError:
-                    pass
-            return match.group(0)
+            src = html_lib.unescape(match.group(2))
+            if not src.startswith("id:"):
+                return match.group(0)
+            try:
+                id_val = int(src[3:])
+            except ValueError:
+                return match.group(0)
+            alt = html_lib.escape(html_lib.unescape(match.group(1)), quote=True)
+            if self.mapping.get(id_val, {}).get('type') == 'a':
+                # Same as replace_img: never render an anchor's href as an img.
+                href = mapped_url(id_val, "href", "src")
+                text = alt.strip()
+                return f'<a href="{href}">{text}</a>' if href and text else text
+            mapped = mapped_url(id_val, "src", "href")
+            return f'<img src="{mapped}" alt="{alt}">' if mapped else alt
 
-        # Handle [text][X] and ![alt][X] mapping (Markdown References)
-        html = re.sub(r'!\[([^\]]*)\]\[(\d+)\]', replace_img, html)
-        html = re.sub(r'\[([^\]]+)\]\[(\d+)\]', replace_a, html)
-        
-        # Handle <a href="id:X"> mapping (Fallbacks for when LLM outputs [text](id:X))
-        html = re.sub(r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', replace_a_html, html)
-        html = re.sub(r'<img[^>]*alt="([^"]*)"[^>]*src="([^"]+)"[^>]*>', replace_img_html, html)
-        
-        return html
+        value = re.sub(r'!\[([^\]]*)\]\[(\d+)\]', replace_img, value)
+        value = re.sub(r'\[([^\]]+)\]\[(\d+)\]', replace_a, value)
+        value = re.sub(r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', replace_a_html, value)
+        value = re.sub(
+            r'<img[^>]*alt="([^"]*)"[^>]*src="([^"]+)"[^>]*>',
+            replace_img_html,
+            value,
+        )
+        return value
 
 async def simplify_html_stream(html_content, base_url="", proxy_prefix=""):
     if not html_content:
         yield "Error: No HTML content provided"
         return
-        
+
     client, model_name = _get_llm_client()
     if not client:
         yield "Error: Unsupported model type"
@@ -384,7 +418,7 @@ async def simplify_html_stream(html_content, base_url="", proxy_prefix=""):
     condensed, mapping = dom_to_condensed(html_content)
     print(f"Condensed markdown length: {len(condensed)}, IDs mapped: {len(mapping)}")
 
-    prompt = f"{current_instructions}\n\nContent to transform:\n{condensed}"
+    prompt = f"{current_instructions}\n{PROTOCOL_INSTRUCTIONS}\n\nContent to transform:\n{condensed}"
     parser = MarkdownStreamParser(mapping, base_url, proxy_prefix)
     
     yield f"""<!DOCTYPE html>
@@ -465,25 +499,34 @@ class DarklyAddon:
         print("Control Panel available at http://dark.ly")
 
     async def request(self, flow: http.HTTPFlow):
+        purpose = flow.request.headers.get("Sec-Purpose", flow.request.headers.get("Purpose", ""))
+        if "prefetch" in purpose.lower():
+            # Refuse speculative fetches before they reach the origin: the
+            # browser re-requests on a real navigation and gets the simplified
+            # page then. Passing them through instead would let the browser
+            # cache and show the raw, un-simplified page on click.
+            flow.response = http.Response.make(503, b"Prefetch declined")
+            return
         if flow.request.pretty_host == "dark.ly":
             if flow.request.method == "POST":
                 try:
                     form_data = flow.request.multipart_form or flow.request.urlencoded_form
                     new_instructions = form_data.get("instructions")
                     action = form_data.get("action")
-                    
+
                     global current_instructions
                     if action == "reset":
                         current_instructions = DEFAULT_INSTRUCTIONS
                     elif new_instructions:
                         current_instructions = new_instructions
-                    
+
                     save_instructions(current_instructions)
                     flow.response = http.Response.make(302, b"", {"Location": "/"})
                 except Exception as e:
                     flow.response = http.Response.make(500, f"Error saving: {str(e)}".encode(), {"Content-Type": "text/plain"})
                 return
 
+            escaped_instructions = html_lib.escape(current_instructions)
             html_page = f"""
             <!DOCTYPE html>
             <html lang="en">
@@ -508,7 +551,7 @@ class DarklyAddon:
                     <h1>Darkly Config</h1>
                     <p>Edit the instructions used by the AI to simplify web pages.</p>
                     <form action="/" method="POST">
-                        <textarea name="instructions">{current_instructions}</textarea>
+                        <textarea name="instructions">{escaped_instructions}</textarea>
                         <div style="display: flex; gap: 1rem;">
                             <button type="submit" name="action" value="save" class="btn">Save Instructions</button>
                             <button type="submit" name="action" value="reset" class="btn btn-secondary">Reset</button>
@@ -524,7 +567,14 @@ class DarklyAddon:
     async def response(self, flow: http.HTTPFlow):
         content_type = flow.response.headers.get("Content-Type", "")
         if "text/html" in content_type and flow.request.pretty_host != "dark.ly" and flow.request.pretty_host != "mitm.it":
+            # Only navigations get simplified. HTML fetched as a subresource
+            # (XHR, an <img> pointing at a page, extension link scans) passes
+            # through untouched instead of burning a generation call each.
+            dest = flow.request.headers.get("Sec-Fetch-Dest", "document")
+            if dest not in ("document", "iframe", "frame"):
+                return
             print(f"Simplifying: {flow.request.pretty_url}")
+            original_response = flow.response.copy()
             try:
                 flow.response.decode()
                 html_content = flow.response.get_text()
@@ -539,7 +589,8 @@ class DarklyAddon:
                 flow.response.headers["Content-Length"] = str(len(flow.response.raw_content))
                 flow.response.headers["x-darkly"] = "true"
             except Exception as e:
-                flow.response.set_text(f"Failed to simplify {flow.request.pretty_url}: {str(e)}")
+                print(f"Failed to simplify {flow.request.pretty_url}: {e}")
+                flow.response = original_response
 
 addons = [
     DarklyAddon()

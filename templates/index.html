@@ -405,6 +405,18 @@
             }
         }
 
+        // Keep the URL box in sync as links are clicked inside the frame.
+        // Every page in the frame is same-origin (/proxy?url=...), so its
+        // location is readable; the url param is the page being proxied.
+        document.getElementById('result-frame').addEventListener('load', (e) => {
+            try {
+                const proxied = new URLSearchParams(e.target.contentWindow.location.search).get('url');
+                if (proxied) document.getElementById('url-input').value = proxied;
+            } catch (err) {
+                // Cross-origin frame content: not ours, leave the box alone.
+            }
+        });
+
         // Load on init
         loadInstructions();
     </script>

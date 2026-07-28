@@ -44,8 +44,7 @@ def _check_url_allowed(url):
 
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+        if not ip.is_global:
             raise BlockedURL(f"Refusing to fetch non-public address {ip} ({host})")
 
 
@@ -82,6 +81,15 @@ async def proxy():
     if not url:
         return "No URL provided", 400
 
+    dest = request.headers.get('Sec-Fetch-Dest')
+    purpose = request.headers.get('Sec-Purpose', request.headers.get('Purpose', ''))
+    print(f"/proxy dest={dest or '-'} purpose={purpose or '-'} url={url}")
+
+    if 'prefetch' in purpose.lower():
+        # Speculative fetch: refuse before spending anything. Browsers discard
+        # failed prefetches and re-request normally on a real navigation.
+        return "Prefetch declined", 503
+
     # Bare input like "example.com" or "example.com:8080/x" gets a default scheme.
     # Anything that already names a scheme keeps it, so _check_url_allowed can reject it.
     if '://' not in url:
@@ -96,6 +104,15 @@ async def proxy():
         # If not HTML, return as is (binary content)
         if 'text/html' not in content_type:
             return Response(response.content, mimetype=content_type)
+
+        # Browsers label what each request is for (Sec-Fetch-Dest). Only a
+        # navigation earns a generation call: HTML requested as a subresource
+        # (an <img> whose id mapped to a page, an extension scanning links)
+        # would otherwise burn a full LLM run per request. Refusing outright
+        # also avoids serving third-party HTML raw from our origin, where an
+        # <object>/<embed> subresource would execute it same-origin.
+        if dest not in (None, 'document', 'iframe', 'frame'):
+            return "HTML is only simplified for navigations", 415
 
         html_content = response.text
 
@@ -119,8 +136,11 @@ async def proxy():
                 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(fetch())
-                loop.close()
+                try:
+                    loop.run_until_complete(fetch())
+                finally:
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                    loop.close()
                 
             threading.Thread(target=run_loop, daemon=True).start()
             
@@ -143,16 +163,14 @@ async def proxy():
 def handle_instructions():
     import darkly_addon
     if request.method == 'POST':
-        try:
-            data = request.get_json()
-            new_instructions = data.get('instructions')
-            if new_instructions:
-                darkly_addon.save_instructions(new_instructions)
-                darkly_addon.current_instructions = new_instructions
-                return jsonify({"status": "success"})
+        data = request.get_json(silent=True) or {}
+        new_instructions = data.get('instructions')
+        if not isinstance(new_instructions, str) or not new_instructions:
             return jsonify({"status": "error", "message": "No instructions provided"}), 400
-        except Exception as e:
-            return jsonify({"status": "error", "message": str(e)}), 500
+
+        darkly_addon.save_instructions(new_instructions)
+        darkly_addon.current_instructions = new_instructions
+        return jsonify({"status": "success"})
             
     return jsonify({
         "instructions": darkly_addon.load_instructions(),

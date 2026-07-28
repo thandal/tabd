@@ -40,9 +40,9 @@ The server reads three optional environment variables:
 | `DARKLY_DEBUG` | off | Never enable on a public bind: the Werkzeug debugger exposes an interactive console and your API keys on any traceback. |
 
 ⚠️ `/proxy` is unauthenticated: anyone who can reach the server can make it fetch
-URLs on their behalf. It refuses non-`http(s)` schemes and rejects private,
-loopback and link-local addresses (re-checked on every redirect hop), but if you
-expose it publicly, expect it to be used as a general-purpose fetcher.
+URLs on their behalf. It refuses non-`http(s)` schemes and non-global addresses
+(re-checked on every redirect hop), but if you expose it publicly, expect it to
+be used as a general-purpose fetcher.
 
 ### For the mitmproxy: Chrome setup: Create a Darkly profile
 * Create a new Chrome profile
